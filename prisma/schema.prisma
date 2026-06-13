@@ -1,0 +1,140 @@
+// EduSphere AI - Prisma Schema
+// Database: PostgreSQL
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// 1. IDENTITY MANAGEMENT LAYER
+// ==========================================
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+model User {
+  id            String              @id @default(uuid())
+  name          String
+  email         String              @unique
+  password      String
+  role          Role                @default(STUDENT)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  // Relations
+  enrollments   Enrollment[]
+  taughtCourses Course[]            @relation("TaughtCourses")
+  quizAttempts  QuizAttempt[]
+  aiInsights    AILearningInsight[]
+}
+
+// ==========================================
+// 2. COURSE & SYLLABUS MANAGEMENT LAYER
+// ==========================================
+
+model Course {
+  id          String       @id @default(uuid())
+  title       String
+  description String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Teacher Relationship
+  teacherId   String
+  teacher     User         @relation("TaughtCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  // Relations
+  materials   Material[]
+  quizzes     Quiz[]
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  enrolledAt DateTime @default(now())
+
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+}
+
+model Material {
+  id        String   @id @default(uuid())
+  title     String
+  fileUrl   String
+  fileType  String
+  createdAt DateTime @default(now())
+
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 3. QUIZ ASSESSMENT ENGINE LAYER
+// ==========================================
+
+model Quiz {
+  id        String        @id @default(uuid())
+  title     String
+  topic     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  courseId  String
+  course    Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  questions Question[]
+  attempts  QuizAttempt[]
+}
+
+model Question {
+  id            String  @id @default(uuid())
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String
+
+  quizId        String
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  score       Float
+  totalMarks  Float
+  percentage  Float
+  submittedAt DateTime @default(now())
+
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 4. GEMINI AI ADAPTIVE INSIGHTS ENGINE
+// ==========================================
+
+model AILearningInsight {
+  id              String   @id @default(uuid())
+  weakTopic       String
+  confidenceScore Float
+  recommendation  String
+  generatedAt     DateTime @default(now())
+
+  studentId       String
+  student         User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
