@@ -7,16 +7,21 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 /**
- * @desc    Fetch all courses (Used by the Student Dashboard)
+ * @desc    Fetch all courses with enrollment and quiz counts
  * @route   GET /api/courses
  */
 exports.getAllCourses = async (req, res) => {
     try {
-        // Retrieve all courses including the teacher's name for the UI
         const courses = await prisma.course.findMany({
             include: {
                 teacher: {
                     select: { name: true }
+                },
+                _count: {
+                    select: {
+                        enrollments: true,
+                        quizzes: true
+                    }
                 }
             }
         });
@@ -39,7 +44,7 @@ exports.getCourseById = async (req, res) => {
             where: { id },
             include: {
                 teacher: { select: { name: true } },
-                materials: true, // Includes Cloudinary hosted assets
+                materials: true,
                 quizzes: {
                     select: { id: true, title: true, topic: true }
                 }
@@ -63,7 +68,7 @@ exports.getCourseById = async (req, res) => {
 exports.createCourse = async (req, res) => {
     try {
         const { title, description } = req.body;
-        const teacherId = req.user.userId; // Extracted from verifyToken middleware
+        const teacherId = req.user.userId;
 
         if (!title || !description) {
             return res.status(400).json({ error: "Course title and description are required." });
