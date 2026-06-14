@@ -11,15 +11,16 @@ const prisma = new PrismaClient();
 async function main() {
     console.log("🌱 Starting database seeding cleanup...");
     
-    // Clear existing records to avoid unique constraint duplicates during re-runs
-    await prisma.aiLearningInsight.deleteMany({});
-    await prisma.quizAttempt.deleteMany({});
-    await prisma.question.deleteMany({});
-    await prisma.quiz.deleteMany({});
-    await prisma.material.deleteMany({});
-    await prisma.enrollment.deleteMany({});
-    await prisma.course.deleteMany({});
-    await prisma.user.deleteMany({});
+
+await prisma.aILearningInsight.deleteMany();
+await prisma.quizAttempt.deleteMany();
+await prisma.question.deleteMany();
+await prisma.quiz.deleteMany();
+await prisma.material.deleteMany();
+await prisma.enrollment.deleteMany();
+await prisma.course.deleteMany();
+await prisma.user.deleteMany();
+
 
     console.log("🔒 Creating encrypted password profiles...");
     const salt = await bcrypt.genSalt(10);
@@ -112,7 +113,7 @@ async function main() {
 
     // 6. MAP PLACEHOLDER GEMINI AI DYNAMIC INSIGHTS
     console.log("✨ Simulating Google Gemini AI analysis logs...");
-    await prisma.aiLearningInsight.create({
+    await prisma.aILearningInsight.create({
         data: {
             weakTopic: "CSS Flexbox Layouts",
             confidenceScore: 0.88,
