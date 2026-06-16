@@ -30,7 +30,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth',    authRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/quizzes', quizRoutes);
-
+app.use('/api/materials', require('./routes/material.routes'));
 // ── Global Error Handler ──
 app.use((err, req, res, next) => {
     console.error("Global Error:", err.stack);
