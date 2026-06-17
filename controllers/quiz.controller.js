@@ -6,6 +6,11 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+/**
+ * @desc    Get quiz questions (Strips out correct answers to prevent front-end cheating)
+ * @route   GET /api/quizzes/:id
+ * @access  Private (STUDENT & TEACHER)
+ */
 exports.getQuizById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -37,6 +42,11 @@ exports.getQuizById = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Submit answers for automated server-side grading
+ * @route   POST /api/quizzes/:id/submit
+ * @access  Private (STUDENT only)
+ */
 exports.submitQuiz = async (req, res) => {
     try {
         const { id } = req.params;
@@ -86,12 +96,30 @@ exports.submitQuiz = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Create a new Quiz with matching structural multiple choice questions
+ * @route   POST /api/quizzes
+ * @access  Private (TEACHER only)
+ */
 exports.createQuiz = async (req, res) => {
     try {
         const { title, topic, courseId, questions } = req.body;
 
         if (!title || !topic || !courseId || !questions || !Array.isArray(questions)) {
             return res.status(400).json({ error: "Missing structural parameters or questions payload array format." });
+        }
+
+        // Validate courseId actually exists before creating quiz
+        const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
+        if (!courseExists) {
+            return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
+        }
+
+        // Validate each question has a valid correctOption
+        for (const q of questions) {
+            if (!["A", "B", "C", "D"].includes(q.correctOption.toUpperCase())) {
+                return res.status(400).json({ error: `Invalid correctOption "${q.correctOption}" — must be A, B, C, or D.` });
+            }
         }
 
         const newQuiz = await prisma.quiz.create({
@@ -106,7 +134,7 @@ exports.createQuiz = async (req, res) => {
                         optionB: q.optionB,
                         optionC: q.optionC,
                         optionD: q.optionD,
-                        correctOption: q.correctOption
+                        correctOption: q.correctOption.toUpperCase()
                     }))
                 }
             }

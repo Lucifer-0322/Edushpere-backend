@@ -17,6 +17,9 @@ exports.getAllCourses = async (req, res) => {
                 teacher: {
                     select: { name: true }
                 },
+                quizzes: {
+                    select: { id: true, title: true }
+                },
                 _count: {
                     select: {
                         enrollments: true,
@@ -29,6 +32,36 @@ exports.getAllCourses = async (req, res) => {
     } catch (error) {
         console.error("Fetch Courses Error:", error);
         res.status(500).json({ error: "Failed to retrieve classroom data." });
+    }
+};
+
+/**
+ * @desc    Fetch ONLY the logged-in teacher's own courses
+ * @route   GET /api/courses/my-courses
+ * @access  Private (TEACHER only)
+ */
+exports.getMyCourses = async (req, res) => {
+    try {
+        const teacherId = req.user.userId;
+
+        const courses = await prisma.course.findMany({
+            where: { teacherId },
+            include: {
+                quizzes: { select: { id: true, title: true } },
+                enrollments: { select: { id: true } },
+                _count: {
+                    select: {
+                        enrollments: true,
+                        quizzes: true
+                    }
+                }
+            }
+        });
+
+        res.status(200).json(courses);
+    } catch (error) {
+        console.error("Fetch My Courses Error:", error);
+        res.status(500).json({ error: "Failed to retrieve your courses." });
     }
 };
 
