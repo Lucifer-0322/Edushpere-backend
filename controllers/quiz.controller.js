@@ -4,14 +4,9 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
-const { generateStudyRecommendation } = require('../services/gemini.service');
 const prisma = new PrismaClient();
+const { generateLearningInsight } = require('../services/gemini.service');
 
-/**
- * @desc    Get quiz questions (Strips out correct answers to prevent front-end cheating)
- * @route   GET /api/quizzes/:id
- * @access  Private (STUDENT & TEACHER)
- */
 exports.getQuizById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -43,11 +38,6 @@ exports.getQuizById = async (req, res) => {
     }
 };
 
-/**
- * @desc    Submit answers for automated server-side grading + AI recommendation
- * @route   POST /api/quizzes/:id/submit
- * @access  Private (STUDENT only)
- */
 exports.submitQuiz = async (req, res) => {
     try {
         const { id } = req.params;
@@ -82,7 +72,6 @@ exports.submitQuiz = async (req, res) => {
 
         const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
-        // Save the quiz attempt first — this must succeed regardless of AI availability
         await prisma.quizAttempt.create({
             data: {
                 score: parseFloat(score),
@@ -93,30 +82,22 @@ exports.submitQuiz = async (req, res) => {
             }
         });
 
-        // Call Gemini AI to generate a real, personalized recommendation
-        const aiResult = await generateStudyRecommendation(wrongQuestions, quiz.topic);
+        // Generate AI learning insight if student got anything wrong
+        let aiInsight = null;
+        if (wrongQuestions.length > 0) {
+            aiInsight = await generateLearningInsight(wrongQuestions, quiz.topic);
 
-        // Save the AI insight tied to this student
-        const savedInsight = await prisma.aILearningInsight.create({
-            data: {
-                weakTopic: aiResult.weakTopic,
-                confidenceScore: aiResult.confidenceScore,
-                recommendation: aiResult.recommendation,
-                studentId
-            }
-        });
+            await prisma.aILearningInsight.create({
+                data: {
+                    weakTopic: aiInsight.weakTopic,
+                    confidenceScore: aiInsight.confidenceScore,
+                    recommendation: aiInsight.recommendation,
+                    studentId
+                }
+            });
+        }
 
-        // Return score AND the fresh AI recommendation in the same response
-        res.status(200).json({
-            score,
-            totalMarks,
-            percentage,
-            aiInsight: {
-                weakTopic: savedInsight.weakTopic,
-                recommendation: savedInsight.recommendation,
-                confidenceScore: savedInsight.confidenceScore
-            }
-        });
+        res.status(200).json({ score, totalMarks, percentage, aiInsight });
 
     } catch (error) {
         console.error("Grading Engine Submission Exception:", error);
@@ -124,28 +105,12 @@ exports.submitQuiz = async (req, res) => {
     }
 };
 
-/**
- * @desc    Create a new Quiz with matching structural multiple choice questions
- * @route   POST /api/quizzes
- * @access  Private (TEACHER only)
- */
 exports.createQuiz = async (req, res) => {
     try {
         const { title, topic, courseId, questions } = req.body;
 
         if (!title || !topic || !courseId || !questions || !Array.isArray(questions)) {
             return res.status(400).json({ error: "Missing structural parameters or questions payload array format." });
-        }
-
-        const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
-        if (!courseExists) {
-            return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
-        }
-
-        for (const q of questions) {
-            if (!["A", "B", "C", "D"].includes(q.correctOption.toUpperCase())) {
-                return res.status(400).json({ error: `Invalid correctOption "${q.correctOption}" — must be A, B, C, or D.` });
-            }
         }
 
         const newQuiz = await prisma.quiz.create({
@@ -160,7 +125,7 @@ exports.createQuiz = async (req, res) => {
                         optionB: q.optionB,
                         optionC: q.optionC,
                         optionD: q.optionD,
-                        correctOption: q.correctOption.toUpperCase()
+                        correctOption: q.correctOption
                     }))
                 }
             }
@@ -170,5 +135,32 @@ exports.createQuiz = async (req, res) => {
     } catch (error) {
         console.error("Quiz Compilation Failure:", error);
         res.status(500).json({ error: "Failed to persist new structural test parameters configurations." });
+    }
+};
+
+/**
+ * @desc    Delete a quiz and its related questions/attempts
+ * @route   DELETE /api/quizzes/:id
+ * @access  Private (TEACHER only)
+ */
+exports.deleteQuiz = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const quiz = await prisma.quiz.findUnique({ where: { id } });
+
+        if (!quiz) {
+            return res.status(404).json({ error: "Quiz not found." });
+        }
+
+        // Delete dependent records first
+        await prisma.quizAttempt.deleteMany({ where: { quizId: id } });
+        await prisma.question.deleteMany({ where: { quizId: id } });
+        await prisma.quiz.delete({ where: { id } });
+
+        res.status(200).json({ message: "Quiz deleted successfully!" });
+    } catch (error) {
+        console.error("Delete Quiz Error:", error);
+        res.status(500).json({ error: "Failed to delete quiz." });
     }
 };
