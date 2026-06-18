@@ -4,6 +4,7 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
+const { generateStudyRecommendation } = require('../services/gemini.service');
 const prisma = new PrismaClient();
 
 /**
@@ -43,7 +44,7 @@ exports.getQuizById = async (req, res) => {
 };
 
 /**
- * @desc    Submit answers for automated server-side grading
+ * @desc    Submit answers for automated server-side grading + AI recommendation
  * @route   POST /api/quizzes/:id/submit
  * @access  Private (STUDENT only)
  */
@@ -68,16 +69,20 @@ exports.submitQuiz = async (req, res) => {
 
         let score = 0;
         const totalMarks = quiz.questions.length;
+        const wrongQuestions = [];
 
         quiz.questions.forEach((question) => {
             const studentAnswer = answers[question.id];
             if (studentAnswer && studentAnswer.toUpperCase() === question.correctOption.toUpperCase()) {
                 score++;
+            } else {
+                wrongQuestions.push({ questionText: question.questionText });
             }
         });
 
         const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
+        // Save the quiz attempt first — this must succeed regardless of AI availability
         await prisma.quizAttempt.create({
             data: {
                 score: parseFloat(score),
@@ -88,7 +93,30 @@ exports.submitQuiz = async (req, res) => {
             }
         });
 
-        res.status(200).json({ score, totalMarks, percentage });
+        // Call Gemini AI to generate a real, personalized recommendation
+        const aiResult = await generateStudyRecommendation(wrongQuestions, quiz.topic);
+
+        // Save the AI insight tied to this student
+        const savedInsight = await prisma.aILearningInsight.create({
+            data: {
+                weakTopic: aiResult.weakTopic,
+                confidenceScore: aiResult.confidenceScore,
+                recommendation: aiResult.recommendation,
+                studentId
+            }
+        });
+
+        // Return score AND the fresh AI recommendation in the same response
+        res.status(200).json({
+            score,
+            totalMarks,
+            percentage,
+            aiInsight: {
+                weakTopic: savedInsight.weakTopic,
+                recommendation: savedInsight.recommendation,
+                confidenceScore: savedInsight.confidenceScore
+            }
+        });
 
     } catch (error) {
         console.error("Grading Engine Submission Exception:", error);
@@ -109,13 +137,11 @@ exports.createQuiz = async (req, res) => {
             return res.status(400).json({ error: "Missing structural parameters or questions payload array format." });
         }
 
-        // Validate courseId actually exists before creating quiz
         const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
         if (!courseExists) {
             return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
         }
 
-        // Validate each question has a valid correctOption
         for (const q of questions) {
             if (!["A", "B", "C", "D"].includes(q.correctOption.toUpperCase())) {
                 return res.status(400).json({ error: `Invalid correctOption "${q.correctOption}" — must be A, B, C, or D.` });
