@@ -13,4 +13,6 @@ router.get('/:id', verifyToken, courseController.getCourseById);
 // Teacher only accessible
 router.post('/', verifyToken, authorizeRoles('TEACHER'), courseController.createCourse);
 
+router.delete('/:id', verifyToken, authorizeRoles('TEACHER'), courseController.deleteCourse);
+
 module.exports = router;

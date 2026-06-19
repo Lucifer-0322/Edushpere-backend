@@ -164,3 +164,35 @@ exports.deleteQuiz = async (req, res) => {
         res.status(500).json({ error: "Failed to delete quiz." });
     }
 };
+/**
+ * @desc    Delete a quiz (Teacher only — and only their own quiz)
+ * @route   DELETE /api/quizzes/:id
+ * @access  Private (TEACHER only)
+ */
+exports.deleteQuiz = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const teacherId = req.user.userId;
+
+        const quiz = await prisma.quiz.findUnique({
+            where: { id },
+            include: { course: true }
+        });
+
+        if (!quiz) {
+            return res.status(404).json({ error: "Quiz not found." });
+        }
+
+        // Security: a teacher can only delete a quiz under their OWN course
+        if (quiz.course.teacherId !== teacherId) {
+            return res.status(403).json({ error: "You can only delete quizzes from your own courses." });
+        }
+
+        await prisma.quiz.delete({ where: { id } });
+
+        res.status(200).json({ message: "Quiz deleted successfully." });
+    } catch (error) {
+        console.error("Delete Quiz Error:", error);
+        res.status(500).json({ error: "Failed to delete quiz." });
+    }
+};

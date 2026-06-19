@@ -93,7 +93,6 @@ exports.getCourseById = async (req, res) => {
         res.status(500).json({ error: "Internal server error fetching course details." });
     }
 };
-
 /**
  * @desc    Create a new course (Teacher only)
  * @route   POST /api/courses
@@ -118,5 +117,34 @@ exports.createCourse = async (req, res) => {
         res.status(201).json({ message: "Course published successfully!", course: newCourse });
     } catch (error) {
         res.status(500).json({ error: "Failed to publish course profile." });
+    }
+};
+/**
+ * @desc    Delete a course (Teacher only — and only their own course)
+ * @route   DELETE /api/courses/:id
+ * @access  Private (TEACHER only)
+ */
+exports.deleteCourse = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const teacherId = req.user.userId;
+
+        const course = await prisma.course.findUnique({ where: { id } });
+
+        if (!course) {
+            return res.status(404).json({ error: "Course not found." });
+        }
+
+        // Security: a teacher can only delete their OWN course
+        if (course.teacherId !== teacherId) {
+            return res.status(403).json({ error: "You can only delete your own courses." });
+        }
+
+        await prisma.course.delete({ where: { id } });
+
+        res.status(200).json({ message: "Course deleted successfully." });
+    } catch (error) {
+        console.error("Delete Course Error:", error);
+        res.status(500).json({ error: "Failed to delete course." });
     }
 };
