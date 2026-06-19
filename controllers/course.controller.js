@@ -148,3 +148,7 @@ exports.deleteCourse = async (req, res) => {
         res.status(500).json({ error: "Failed to delete course." });
     }
 };
+// Security: a teacher can only delete their OWN course, but Admins can delete ANY course
+if (course.teacherId !== req.user.userId && req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: "Unauthorized. You can only delete your own courses." });
+}

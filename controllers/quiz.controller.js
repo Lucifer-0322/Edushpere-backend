@@ -196,3 +196,7 @@ exports.deleteQuiz = async (req, res) => {
         res.status(500).json({ error: "Failed to delete quiz." });
     }
 };
+// Security: a teacher can only delete a quiz under their OWN course, Admins can delete ANY
+if (quiz.course.teacherId !== req.user.userId && req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: "Unauthorized. You can only delete quizzes from your own courses." });
+}
