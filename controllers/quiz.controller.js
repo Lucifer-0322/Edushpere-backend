@@ -124,21 +124,28 @@ exports.submitQuiz = async (req, res) => {
 };
 
 /**
- * @desc    Create a new quiz with questions
+ * @desc    Create a new quiz with questions (only on courses the teacher owns)
  * @route   POST /api/quizzes
  * @access  Private (TEACHER only)
  */
 exports.createQuiz = async (req, res) => {
     try {
         const { title, topic, courseId, questions } = req.body;
+        const teacherId = req.user.userId;
 
         if (!title || !topic || !courseId || !questions || !Array.isArray(questions)) {
             return res.status(400).json({ error: "Missing required fields." });
         }
 
-        const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
-        if (!courseExists) {
+        const course = await prisma.course.findUnique({ where: { id: courseId } });
+
+        if (!course) {
             return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
+        }
+
+        // ✅ Ownership check — teacher can only add quizzes to their OWN courses
+        if (course.teacherId !== teacherId) {
+            return res.status(403).json({ error: "You can only add quizzes to your own courses." });
         }
 
         for (const q of questions) {
