@@ -10,7 +10,8 @@ const dotenv  = require('dotenv');
 const authRoutes    = require('./routes/authRoutes');
 const courseRoutes  = require('./routes/course.routes');
 const quizRoutes    = require('./routes/quiz.routes');
-const insightRoutes = require('./routes/insight.routes');
+const aiRoutes      = require('./routes/ai.routes');
+const userRoutes    = require('./routes/user.routes');
 
 dotenv.config();
 const app = express();
@@ -31,7 +32,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth',      authRoutes);
 app.use('/api/courses',   courseRoutes);
 app.use('/api/quizzes',   quizRoutes);
-app.use('/api/insights',  insightRoutes);
+app.use('/api/ai',        aiRoutes);
+app.use('/api/users',     userRoutes);
 
 // ── Global Error Handler ──
 app.use((err, req, res, next) => {
