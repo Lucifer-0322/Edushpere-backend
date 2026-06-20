@@ -1,16 +1,6 @@
-/**
- * EduSphere AI - AI Insights Controller
- * Exposes the student's most recent Gemini-generated recommendation.
- */
-
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-/**
- * @desc    Get the logged-in student's most recent AI insight
- * @route   GET /api/ai/my-insight
- * @access  Private (STUDENT only)
- */
 exports.getMyLatestInsight = async (req, res) => {
     try {
         const studentId = req.user.userId;
