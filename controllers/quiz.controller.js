@@ -5,14 +5,19 @@
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { generateLearningInsight } = require('../services/gemini.service');
+const { generateStudyRecommendation } = require('../services/gemini.service');
 
+/**
+ * @desc    Get quiz questions (strips correct answers)
+ * @route   GET /api/quizzes/:id
+ * @access  Private (STUDENT & TEACHER)
+ */
 exports.getQuizById = async (req, res) => {
     try {
         const { id } = req.params;
 
         const quiz = await prisma.quiz.findUnique({
-            where: { id: id },
+            where: { id },
             include: {
                 questions: {
                     select: {
@@ -38,6 +43,11 @@ exports.getQuizById = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Submit answers for automated grading + AI recommendation
+ * @route   POST /api/quizzes/:id/submit
+ * @access  Private (STUDENT only)
+ */
 exports.submitQuiz = async (req, res) => {
     try {
         const { id } = req.params;
@@ -45,11 +55,11 @@ exports.submitQuiz = async (req, res) => {
         const studentId = req.user.userId;
 
         if (!answers) {
-            return res.status(400).json({ error: "Payload missing selected answers stack." });
+            return res.status(400).json({ error: "Payload missing selected answers." });
         }
 
         const quiz = await prisma.quiz.findUnique({
-            where: { id: id },
+            where: { id },
             include: { questions: true }
         });
 
@@ -72,6 +82,7 @@ exports.submitQuiz = async (req, res) => {
 
         const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
+        // Save quiz attempt
         await prisma.quizAttempt.create({
             data: {
                 score: parseFloat(score),
@@ -82,35 +93,58 @@ exports.submitQuiz = async (req, res) => {
             }
         });
 
-        // Generate AI learning insight if student got anything wrong
+        // Call Gemini AI for personalized recommendation
         let aiInsight = null;
-        if (wrongQuestions.length > 0) {
-            aiInsight = await generateLearningInsight(wrongQuestions, quiz.topic);
-
-            await prisma.aILearningInsight.create({
+        try {
+            const aiResult = await generateStudyRecommendation(wrongQuestions, quiz.topic);
+            const savedInsight = await prisma.aILearningInsight.create({
                 data: {
-                    weakTopic: aiInsight.weakTopic,
-                    confidenceScore: aiInsight.confidenceScore,
-                    recommendation: aiInsight.recommendation,
+                    weakTopic: aiResult.weakTopic,
+                    confidenceScore: aiResult.confidenceScore,
+                    recommendation: aiResult.recommendation,
                     studentId
                 }
             });
+            aiInsight = {
+                weakTopic: savedInsight.weakTopic,
+                recommendation: savedInsight.recommendation,
+                confidenceScore: savedInsight.confidenceScore
+            };
+        } catch (aiError) {
+            console.error("Gemini AI Error (non-fatal):", aiError.message);
+            // AI failure never blocks the quiz result
         }
 
         res.status(200).json({ score, totalMarks, percentage, aiInsight });
 
     } catch (error) {
         console.error("Grading Engine Submission Exception:", error);
-        res.status(500).json({ error: "Failed to compile evaluation metrics grading criteria." });
+        res.status(500).json({ error: "Failed to compile evaluation metrics." });
     }
 };
 
+/**
+ * @desc    Create a new quiz with questions
+ * @route   POST /api/quizzes
+ * @access  Private (TEACHER only)
+ */
 exports.createQuiz = async (req, res) => {
     try {
         const { title, topic, courseId, questions } = req.body;
 
         if (!title || !topic || !courseId || !questions || !Array.isArray(questions)) {
-            return res.status(400).json({ error: "Missing structural parameters or questions payload array format." });
+            return res.status(400).json({ error: "Missing required fields." });
+        }
+
+        const courseExists = await prisma.course.findUnique({ where: { id: courseId } });
+        if (!courseExists) {
+            return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
+        }
+
+        for (const q of questions) {
+            if (!["A", "B", "C", "D"].includes(q.correctOption.toUpperCase())) {
+                return res.status(400).json({ error: `Invalid correctOption "${q.correctOption}" — must be A, B, C, or D.` });
+            }
         }
 
         const newQuiz = await prisma.quiz.create({
@@ -125,54 +159,27 @@ exports.createQuiz = async (req, res) => {
                         optionB: q.optionB,
                         optionC: q.optionC,
                         optionD: q.optionD,
-                        correctOption: q.correctOption
+                        correctOption: q.correctOption.toUpperCase()
                     }))
                 }
             }
         });
 
-        res.status(201).json({ message: "Quiz compiled and posted successfully!", quiz: newQuiz });
+        res.status(201).json({ message: "Quiz created successfully!", quiz: newQuiz });
     } catch (error) {
-        console.error("Quiz Compilation Failure:", error);
-        res.status(500).json({ error: "Failed to persist new structural test parameters configurations." });
+        console.error("Quiz Creation Error:", error);
+        res.status(500).json({ error: "Failed to create quiz." });
     }
 };
 
 /**
- * @desc    Delete a quiz and its related questions/attempts
+ * @desc    Delete a quiz (Teacher — own only / Admin — any)
  * @route   DELETE /api/quizzes/:id
- * @access  Private (TEACHER only)
+ * @access  Private (TEACHER or ADMIN)
  */
 exports.deleteQuiz = async (req, res) => {
     try {
         const { id } = req.params;
-
-        const quiz = await prisma.quiz.findUnique({ where: { id } });
-
-        if (!quiz) {
-            return res.status(404).json({ error: "Quiz not found." });
-        }
-
-        // Delete dependent records first
-        await prisma.quizAttempt.deleteMany({ where: { quizId: id } });
-        await prisma.question.deleteMany({ where: { quizId: id } });
-        await prisma.quiz.delete({ where: { id } });
-
-        res.status(200).json({ message: "Quiz deleted successfully!" });
-    } catch (error) {
-        console.error("Delete Quiz Error:", error);
-        res.status(500).json({ error: "Failed to delete quiz." });
-    }
-};
-/**
- * @desc    Delete a quiz (Teacher only — and only their own quiz)
- * @route   DELETE /api/quizzes/:id
- * @access  Private (TEACHER only)
- */
-exports.deleteQuiz = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const teacherId = req.user.userId;
 
         const quiz = await prisma.quiz.findUnique({
             where: { id },
@@ -183,11 +190,15 @@ exports.deleteQuiz = async (req, res) => {
             return res.status(404).json({ error: "Quiz not found." });
         }
 
-        // Security: a teacher can only delete a quiz under their OWN course
-        if (quiz.course.teacherId !== teacherId) {
+        // Teacher can only delete quiz from their OWN course
+        // Admin can delete any quiz
+        if (quiz.course.teacherId !== req.user.userId && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: "You can only delete quizzes from your own courses." });
         }
 
+        // Delete dependent records first to avoid foreign key errors
+        await prisma.quizAttempt.deleteMany({ where: { quizId: id } });
+        await prisma.question.deleteMany({ where: { quizId: id } });
         await prisma.quiz.delete({ where: { id } });
 
         res.status(200).json({ message: "Quiz deleted successfully." });
@@ -196,7 +207,3 @@ exports.deleteQuiz = async (req, res) => {
         res.status(500).json({ error: "Failed to delete quiz." });
     }
 };
-// Security: a teacher can only delete a quiz under their OWN course, Admins can delete ANY
-if (quiz.course.teacherId !== req.user.userId && req.user.role !== 'ADMIN') {
-    return res.status(403).json({ error: "Unauthorized. You can only delete quizzes from your own courses." });
-}
