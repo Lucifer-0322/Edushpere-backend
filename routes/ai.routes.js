@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const aiController = require('../controllers/ai.controller');
-const { verifyToken, authorizeRoles } = require('../middleware/authMiddleware');
+const insightController = require('../controllers/insight.controller');
+const { verifyToken } = require('../middleware/authMiddleware');
 
-router.get('/my-insight', verifyToken, authorizeRoles('STUDENT'), aiController.getMyLatestInsight);
+router.get('/my-insight', verifyToken, insightController.getMyLatestInsight);
 
 module.exports = router;
