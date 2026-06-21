@@ -52,7 +52,7 @@ exports.generateDescription = async (req, res) => {
         res.status(200).json({ description });
     } catch (error) {
         console.error("Description Generation Error:", error.message);
-        res.status(500).json({ error: "Failed to generate description. Please try again or write it manually." });
+        res.status(500).json({ error: `Failed to generate description: ${error.message}` });
     }
 };
 
@@ -98,7 +98,7 @@ exports.getPerformanceReport = async (req, res) => {
 
     } catch (error) {
         console.error("Performance Report Error:", error.message);
-        res.status(500).json({ error: "Failed to generate performance report. Please try again shortly." });
+        res.status(500).json({ error: `Failed to generate performance report: ${error.message}` });
     }
 };
 
@@ -123,6 +123,6 @@ exports.generateQuiz = async (req, res) => {
 
     } catch (error) {
         console.error("Quiz Generation Error:", error.message);
-        res.status(500).json({ error: "Failed to generate quiz questions. Please try again or add questions manually." });
+        res.status(500).json({ error: `Failed to generate quiz questions: ${error.message}` });
     }
 };
