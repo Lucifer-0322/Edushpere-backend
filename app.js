@@ -8,7 +8,7 @@ const quizRoutes      = require('./routes/quiz.routes');
 const insightRoutes   = require('./routes/insight.routes');
 const userRoutes      = require('./routes/user.routes');
 const materialRoutes  = require('./routes/material.routes');
-const analyticsRoutes = require('./routes/Analytics.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 dotenv.config();
 const app = express();
