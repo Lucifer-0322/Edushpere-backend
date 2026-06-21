@@ -1,17 +1,14 @@
-/**
- * EduSphere AI - Application Configuration & Route Manager
- */
-
 const express = require('express');
 const cors    = require('cors');
 const dotenv  = require('dotenv');
 
-const authRoutes     = require('./routes/authRoutes');
-const courseRoutes   = require('./routes/course.routes');
-const quizRoutes     = require('./routes/quiz.routes');
-const insightRoutes  = require('./routes/insight.routes');
-const userRoutes     = require('./routes/user.routes');
-const materialRoutes = require('./routes/material.routes');
+const authRoutes      = require('./routes/authRoutes');
+const courseRoutes    = require('./routes/course.routes');
+const quizRoutes      = require('./routes/quiz.routes');
+const insightRoutes   = require('./routes/insight.routes');
+const userRoutes      = require('./routes/user.routes');
+const materialRoutes  = require('./routes/material.routes');
+const analyticsRoutes = require('./routes/Analytics.routes');
 
 dotenv.config();
 const app = express();
@@ -32,6 +29,7 @@ app.use('/api/quizzes',   quizRoutes);
 app.use('/api/insights',  insightRoutes);
 app.use('/api/users',     userRoutes);
 app.use('/api/materials', materialRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.use((err, req, res, next) => {
     console.error("Global Error:", err.stack);
