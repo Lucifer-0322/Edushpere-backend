@@ -9,6 +9,7 @@ const insightRoutes   = require('./routes/insight.routes');
 const userRoutes      = require('./routes/user.routes');
 const materialRoutes  = require('./routes/material.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const aiRoutes         = require('./routes/ai.routes');
 
 dotenv.config();
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/insights',  insightRoutes);
 app.use('/api/users',     userRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/ai',        aiRoutes);
 
 app.use((err, req, res, next) => {
     console.error("Global Error:", err.stack);
