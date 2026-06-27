@@ -91,3 +91,26 @@ exports.login = async (req, res) => {
         res.status(500).json({ error: "Internal server processing failure during authentication." });
     }
 };
+
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: "Email is required." });
+        }
+
+        // Check if user exists (but don't reveal this to the client)
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        // Always return 200 for security — don't reveal if email exists
+        // In a real system you would send an email here
+        console.log(`Password reset requested for: ${email}, exists: ${!!user}`);
+
+        res.status(200).json({ message: "If this email exists, a reset link has been sent." });
+
+    } catch (error) {
+        console.error("Forgot Password Error:", error);
+        res.status(500).json({ error: "Failed to process request." });
+    }
+};
