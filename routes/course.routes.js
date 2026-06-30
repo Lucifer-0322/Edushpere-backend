@@ -8,7 +8,6 @@ router.get('/my-courses', verifyToken, authorizeRoles('TEACHER'), courseControll
 router.get('/:id/leaderboard', verifyToken, courseController.getCourseLeaderboard);
 router.get('/:id', verifyToken, courseController.getCourseById);
 router.post('/', verifyToken, authorizeRoles('TEACHER'), courseController.createCourse);
-router.put('/:id', verifyToken, authorizeRoles('TEACHER'), courseController.updateCourse);
 router.delete('/:id', verifyToken, authorizeRoles('TEACHER', 'ADMIN'), courseController.deleteCourse);
 
 module.exports = router;
