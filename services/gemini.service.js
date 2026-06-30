@@ -30,7 +30,7 @@ Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text)
 `;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const text = result.response.text();
         const cleaned = text.replace(/```json|```/g, "").trim();
@@ -61,7 +61,7 @@ Mention what students will learn and what skills they will gain.
 Be clear, engaging, and academic.
 Return ONLY the description text — no labels, no markdown, no surrounding quotation marks.`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const description = result.response.text().trim();
 
@@ -93,7 +93,7 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
   "motivationalMessage": "one encouraging sentence"
 }`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const text = result.response.text().replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(text);
@@ -132,7 +132,7 @@ Rules:
 - All 4 options must be distinct and plausible
 - Return exactly ${count} questions`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const text = result.response.text().replace(/```json|```/g, "").trim();
     const questions = JSON.parse(text);
