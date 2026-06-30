@@ -148,3 +148,58 @@ exports.deleteCourse = async (req, res) => {
         res.status(500).json({ error: "Failed to delete course." });
     }
 };
+/**
+ * @desc    Get leaderboard of top students for a course based on their
+ *          best quiz attempt percentage across all quizzes in the course
+ * @route   GET /api/courses/:id/leaderboard
+ * @access  Private (STUDENT & TEACHER)
+ */
+exports.getCourseLeaderboard = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const quizzes = await prisma.quiz.findMany({
+            where: { courseId: id },
+            select: { id: true }
+        });
+
+        const quizIds = quizzes.map(q => q.id);
+
+        if (quizIds.length === 0) {
+            return res.status(200).json([]);
+        }
+
+        const attempts = await prisma.quizAttempt.findMany({
+            where: { quizId: { in: quizIds } },
+            include: {
+                student: { select: { id: true, name: true } }
+            }
+        });
+
+        const bestByStudent = {};
+
+        attempts.forEach(attempt => {
+            const studentId = attempt.student.id;
+            if (!bestByStudent[studentId] || attempt.percentage > bestByStudent[studentId].percentage) {
+                bestByStudent[studentId] = {
+                    studentId,
+                    name: attempt.student.name,
+                    percentage: attempt.percentage
+                };
+            }
+        });
+
+        const leaderboard = Object.values(bestByStudent)
+            .sort((a, b) => b.percentage - a.percentage)
+            .map((entry, index) => ({
+                rank: index + 1,
+                name: entry.name,
+                percentage: Math.round(entry.percentage)
+            }));
+
+        res.status(200).json(leaderboard);
+    } catch (error) {
+        console.error("Fetch Leaderboard Error:", error);
+        res.status(500).json({ error: "Failed to fetch leaderboard." });
+    }
+};
