@@ -30,7 +30,7 @@ Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text)
 `;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const text = result.response.text();
         const cleaned = text.replace(/```json|```/g, "").trim();
