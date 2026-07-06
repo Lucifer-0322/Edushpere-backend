@@ -66,7 +66,9 @@ exports.getMyCourses = async (req, res) => {
 };
 
 /**
- * @desc    Get a single course with its materials and quizzes
+ * @desc    Get a single course with its materials and quizzes.
+ *          For STUDENT requests, each quiz also includes an "attempted"
+ *          boolean so the frontend can render a progress bar.
  * @route   GET /api/courses/:id
  */
 exports.getCourseById = async (req, res) => {
@@ -86,6 +88,27 @@ exports.getCourseById = async (req, res) => {
 
         if (!course) {
             return res.status(404).json({ error: "Course identity not found." });
+        }
+
+        // Attach "attempted" flag per quiz when the requester is a student
+        if (req.user && req.user.role === 'STUDENT' && course.quizzes.length > 0) {
+            const studentId = req.user.userId;
+            const quizIds = course.quizzes.map(q => q.id);
+
+            const attempts = await prisma.quizAttempt.findMany({
+                where: {
+                    studentId,
+                    quizId: { in: quizIds }
+                },
+                select: { quizId: true }
+            });
+
+            const attemptedQuizIds = new Set(attempts.map(a => a.quizId));
+
+            course.quizzes = course.quizzes.map(q => ({
+                ...q,
+                attempted: attemptedQuizIds.has(q.id)
+            }));
         }
 
         res.status(200).json(course);
@@ -148,8 +171,9 @@ exports.deleteCourse = async (req, res) => {
         res.status(500).json({ error: "Failed to delete course." });
     }
 };
+
 /**
- * @desc    Get leaderboard of top students for a course based on their
+ * @desc    Get top-5 leaderboard for a course, based on each student's
  *          best quiz attempt percentage across all quizzes in the course
  * @route   GET /api/courses/:id/leaderboard
  * @access  Private (STUDENT & TEACHER)
@@ -166,7 +190,7 @@ exports.getCourseLeaderboard = async (req, res) => {
         const quizIds = quizzes.map(q => q.id);
 
         if (quizIds.length === 0) {
-            return res.status(200).json([]);
+            return res.status(200).json({ leaderboard: [] });
         }
 
         const attempts = await prisma.quizAttempt.findMany({
@@ -182,7 +206,6 @@ exports.getCourseLeaderboard = async (req, res) => {
             const studentId = attempt.student.id;
             if (!bestByStudent[studentId] || attempt.percentage > bestByStudent[studentId].percentage) {
                 bestByStudent[studentId] = {
-                    studentId,
                     name: attempt.student.name,
                     percentage: attempt.percentage
                 };
@@ -190,14 +213,14 @@ exports.getCourseLeaderboard = async (req, res) => {
         });
 
         const leaderboard = Object.values(bestByStudent)
-            .sort((a, b) => b.percentage - a.percentage)
-            .map((entry, index) => ({
-                rank: index + 1,
+            .map(entry => ({
                 name: entry.name,
-                percentage: Math.round(entry.percentage)
-            }));
+                average: Math.round(entry.percentage)
+            }))
+            .sort((a, b) => b.average - a.average)
+            .slice(0, 5);
 
-        res.status(200).json(leaderboard);
+        res.status(200).json({ leaderboard });
     } catch (error) {
         console.error("Fetch Leaderboard Error:", error);
         res.status(500).json({ error: "Failed to fetch leaderboard." });
