@@ -1,6 +1,50 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Multiple keys for rotation — set these in .env and in Railway
+const API_KEYS = [
+    process.env.GEMINI_API_KEY_1,
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3
+].filter(Boolean); // removes any that are missing/undefined
+
+if (API_KEYS.length === 0) {
+    throw new Error("No Gemini API keys found. Set GEMINI_API_KEY_1 (and _2, _3) in your .env file.");
+}
+
+let currentKeyIndex = 0;
+
+function getClient() {
+    const key = API_KEYS[currentKeyIndex];
+    return new GoogleGenerativeAI(key);
+}
+
+function rotateKey() {
+    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+    console.log(`Rotated to Gemini API key #${currentKeyIndex + 1}`);
+}
+
+/**
+ * Runs a Gemini call with automatic retry across all available keys.
+ * Tries each key up to once per call; if all keys fail, throws the last error.
+ */
+async function callGeminiWithRetry(modelName, prompt) {
+    let lastError;
+
+    for (let attempt = 0; attempt < API_KEYS.length; attempt++) {
+        try {
+            const genAI = getClient();
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const result = await model.generateContent(prompt);
+            return result.response.text();
+        } catch (error) {
+            console.error(`Gemini call failed on key #${currentKeyIndex + 1}:`, error.message);
+            lastError = error;
+            rotateKey(); // move to next key and try again
+        }
+    }
+
+    throw lastError; // all keys failed
+}
 
 async function generateStudyRecommendation(wrongQuestions, quizTopic) {
     if (!wrongQuestions || wrongQuestions.length === 0) {
@@ -30,9 +74,7 @@ Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text)
 `;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const text = await callGeminiWithRetry("gemini-1.5-flash", prompt);
         const cleaned = text.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleaned);
 
@@ -42,7 +84,7 @@ Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text)
             recommendation: parsed.recommendation || "Review this topic and try the quiz again."
         };
     } catch (error) {
-        console.error("Gemini API Error:", error.message);
+        console.error("Gemini API Error (all keys failed):", error.message);
         return {
             weakTopic: quizTopic,
             confidenceScore: 0.5,
@@ -61,9 +103,8 @@ Mention what students will learn and what skills they will gain.
 Be clear, engaging, and academic.
 Return ONLY the description text — no labels, no markdown, no surrounding quotation marks.`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const description = result.response.text().trim();
+    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const description = text.trim();
 
     if (!description) {
         throw new Error("Gemini returned an empty description.");
@@ -93,10 +134,9 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
   "motivationalMessage": "one encouraging sentence"
 }`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(text);
+    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const cleaned = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
 
     return {
         overallGrade: parsed.overallGrade || "N/A",
@@ -132,10 +172,9 @@ Rules:
 - All 4 options must be distinct and plausible
 - Return exactly ${count} questions`;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().replace(/```json|```/g, "").trim();
-    const questions = JSON.parse(text);
+    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const cleaned = text.replace(/```json|```/g, "").trim();
+    const questions = JSON.parse(cleaned);
 
     if (!Array.isArray(questions)) {
         throw new Error("Gemini did not return a valid array of questions.");
