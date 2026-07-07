@@ -93,26 +93,28 @@ exports.submitQuiz = async (req, res) => {
             }
         });
 
-        // Call Gemini AI for personalized recommendation
+        // Call Gemini AI only if student got at least one question wrong
         let aiInsight = null;
-        try {
-            const aiResult = await generateStudyRecommendation(wrongQuestions, quiz.topic);
-            const savedInsight = await prisma.aILearningInsight.create({
-                data: {
-                    weakTopic: aiResult.weakTopic,
-                    confidenceScore: aiResult.confidenceScore,
-                    recommendation: aiResult.recommendation,
-                    studentId
-                }
-            });
-            aiInsight = {
-                weakTopic: savedInsight.weakTopic,
-                recommendation: savedInsight.recommendation,
-                confidenceScore: savedInsight.confidenceScore
-            };
-        } catch (aiError) {
-            console.error("Gemini AI Error (non-fatal):", aiError.message);
-            // AI failure never blocks the quiz result
+        if (wrongQuestions.length > 0) {
+            try {
+                const aiResult = await generateStudyRecommendation(wrongQuestions, quiz.topic);
+                const savedInsight = await prisma.aILearningInsight.create({
+                    data: {
+                        weakTopic: aiResult.weakTopic,
+                        confidenceScore: aiResult.confidenceScore,
+                        recommendation: aiResult.recommendation,
+                        studentId
+                    }
+                });
+                aiInsight = {
+                    weakTopic: savedInsight.weakTopic,
+                    recommendation: savedInsight.recommendation,
+                    confidenceScore: savedInsight.confidenceScore
+                };
+            } catch (aiError) {
+                console.error("Gemini AI Error (non-fatal):", aiError.message);
+                // AI failure never blocks the quiz result
+            }
         }
 
         res.status(200).json({ score, totalMarks, percentage, aiInsight });
@@ -143,7 +145,6 @@ exports.createQuiz = async (req, res) => {
             return res.status(404).json({ error: `Course with ID ${courseId} does not exist.` });
         }
 
-        // ✅ Ownership check — teacher can only add quizzes to their OWN courses
         if (course.teacherId !== teacherId) {
             return res.status(403).json({ error: "You can only add quizzes to your own courses." });
         }
@@ -197,13 +198,10 @@ exports.deleteQuiz = async (req, res) => {
             return res.status(404).json({ error: "Quiz not found." });
         }
 
-        // Teacher can only delete quiz from their OWN course
-        // Admin can delete any quiz
         if (quiz.course.teacherId !== req.user.userId && req.user.role !== 'ADMIN') {
             return res.status(403).json({ error: "You can only delete quizzes from your own courses." });
         }
 
-        // Delete dependent records first to avoid foreign key errors
         await prisma.quizAttempt.deleteMany({ where: { quizId: id } });
         await prisma.question.deleteMany({ where: { quizId: id } });
         await prisma.quiz.delete({ where: { id } });
