@@ -55,21 +55,27 @@ async function generateStudyRecommendation(wrongQuestions, quizTopic) {
         };
     }
 
-    const wrongList = wrongQuestions.map(q => `- "${q.questionText}"`).join("\n");
+    const wrongList = wrongQuestions.map((q, i) => `
+${i + 1}. Question: "${q.questionText}"
+   Options: A) ${q.optionA}  B) ${q.optionB}  C) ${q.optionC}  D) ${q.optionD}
+   Correct answer: ${q.correctOption}
+   Student's answer: ${q.studentAnswer}`).join("\n");
 
     const prompt = `
-You are an educational AI assistant analyzing a student's quiz performance.
+You are an educational AI tutor analyzing a student's quiz mistakes to give specific, useful feedback.
 
 Quiz Topic: ${quizTopic}
 
-The student answered these questions INCORRECTLY:
+The student answered these questions INCORRECTLY. For each one, you can see the question, all options, the correct answer, and what the student actually picked:
 ${wrongList}
+
+Look at the PATTERN in their wrong answers — not just that they were wrong, but what kind of mistake it suggests (e.g. confusing two similar concepts, a common misconception, a specific sub-topic within the broader topic, careless reading vs genuine misunderstanding).
 
 Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text):
 {
-  "weakTopic": "specific topic the student is struggling with",
+  "weakTopic": "the SPECIFIC sub-topic or concept they're struggling with, not just the general quiz topic",
   "confidenceScore": 0.85,
-  "recommendation": "2-3 sentence actionable study suggestion"
+  "recommendation": "3-4 sentences. Reference their specific wrong answer(s) directly (e.g. 'You selected X when the answer was Y, which suggests...'), explain the likely misconception, and give one concrete, actionable next step."
 }
 `;
 
