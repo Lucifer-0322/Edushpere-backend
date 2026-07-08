@@ -83,7 +83,7 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
 confidenceScore meaning: 0.9 = very clear pattern found, 0.7 = likely issue, 0.5 = unclear from limited data.`;
 
     try {
-        const text = await callGeminiWithRetry("gemini-2.0-flash", prompt);
+        const text = await callGeminiWithRetry("gemini-1.5-flash-8b", prompt);
         const cleaned = text.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleaned);
 
@@ -117,7 +117,7 @@ Write a compelling 2-3 sentence course description for a university course title
 Tone: Clear, professional, and motivating.
 Return ONLY the description text — no labels, no markdown, no surrounding quotation marks.`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash-8b", prompt);
     const description = text.trim();
 
     if (!description) {
@@ -153,7 +153,7 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
   "motivationalMessage": "one personalised encouraging sentence referencing their actual progress or a specific strength"
 }`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash-8b", prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -195,7 +195,7 @@ Return ONLY a valid JSON array (no markdown, no backticks, no extra text):
 
 Return exactly ${count} questions. correctOption must be A, B, C, or D only.`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash-8b", prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const questions = JSON.parse(cleaned);
 
