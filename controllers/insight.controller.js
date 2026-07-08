@@ -3,11 +3,13 @@
  */
 
 const { PrismaClient } = require('@prisma/client');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const {
+    generateCourseDescription,
+    generatePerformanceReport,
+    generateQuizQuestions
+} = require('../services/gemini.service');
 
 const prisma = new PrismaClient();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 /**
  * @desc    Get latest AI insight for logged-in student
@@ -91,11 +93,7 @@ exports.generateCourseDescription = async (req, res) => {
         const { title } = req.body;
         if (!title) return res.status(400).json({ error: "Course title is required." });
 
-        const prompt = `Write a professional 2-3 sentence course description for a university course titled "${title}". Mention what students will learn and what skills they will gain. Be clear, engaging, and academic. Return ONLY the description text, no extra formatting or labels.`;
-
-        const result = await model.generateContent(prompt);
-        const description = result.response.text().trim();
-
+        const description = await generateCourseDescription(title);
         res.status(200).json({ description });
     } catch (error) {
         console.error("Description Generation Error:", error.message);
@@ -126,31 +124,14 @@ exports.getPerformanceReport = async (req, res) => {
         }
 
         const performanceSummary = attempts.map(a =>
-            `- ${a.quiz.topic}: ${Math.round(a.percentage)}% (${a.score}/${a.totalMarks} correct)`
+            `- Topic: "${a.quiz.topic}" — Score: ${Math.round(a.percentage)}% (${a.score} out of ${a.totalMarks} correct)`
         ).join("\n");
 
         const totalAvg = Math.round(
             attempts.reduce((sum, a) => sum + a.percentage, 0) / attempts.length
         );
 
-        const prompt = `You are an educational AI assistant. Analyze this student's quiz performance:
-
-${performanceSummary}
-
-Overall average: ${totalAvg}%
-
-Return ONLY a valid JSON object (no markdown, no backticks):
-{
-  "overallGrade": "A or B or C or D or F",
-  "strengths": ["topic1", "topic2"],
-  "weakAreas": ["topic1", "topic2"],
-  "studyPlan": ["Step 1: action", "Step 2: action", "Step 3: action"],
-  "motivationalMessage": "one encouraging sentence"
-}`;
-
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/\`\`\`json|\`\`\`/g, "").trim();
-        const parsed = JSON.parse(text);
+        const parsed = await generatePerformanceReport(performanceSummary, totalAvg);
 
         res.status(200).json({
             report: parsed,
@@ -174,31 +155,7 @@ exports.generateQuizQuestions = async (req, res) => {
         const { topic, count = 5 } = req.body;
         if (!topic) return res.status(400).json({ error: "Topic is required." });
 
-        const prompt = `Generate exactly ${count} multiple choice questions about "${topic}" for a university course.
-
-Return ONLY a valid JSON array (no markdown, no backticks):
-[
-  {
-    "questionText": "Question here?",
-    "optionA": "First option",
-    "optionB": "Second option",
-    "optionC": "Third option",
-    "optionD": "Fourth option",
-    "correctOption": "A"
-  }
-]
-
-Rules:
-- correctOption must be exactly A, B, C, or D
-- All 4 options must be distinct
-- Return exactly ${count} questions`;
-
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/\`\`\`json|\`\`\`/g, "").trim();
-        const questions = JSON.parse(text);
-
-        if (!Array.isArray(questions)) throw new Error("Invalid response from Gemini.");
-
+        const questions = await generateQuizQuestions(topic, count);
         res.status(200).json({ questions, topic });
     } catch (error) {
         console.error("Quiz Generation Error:", error.message);
