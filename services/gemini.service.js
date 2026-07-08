@@ -1,39 +1,56 @@
+const Groq = require("groq-sdk");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const API_KEYS = [
+// ── Groq client (primary — free, fast, generous limits) ──
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// ── Gemini keys (fallback) ──
+const GEMINI_KEYS = [
     process.env.GEMINI_API_KEY_1,
     process.env.GEMINI_API_KEY_2,
-    process.env.GEMINI_API_KEY_3
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY_4,
+    process.env.GEMINI_API_KEY_5
 ].filter(Boolean);
-
-if (API_KEYS.length === 0) {
-    throw new Error("No Gemini API keys found. Set GEMINI_API_KEY_1 (and _2, _3) in your .env file.");
-}
 
 let currentKeyIndex = 0;
 
-function getClient() {
-    const key = API_KEYS[currentKeyIndex];
-    return new GoogleGenerativeAI(key);
-}
-
 function rotateKey() {
-    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+    currentKeyIndex = (currentKeyIndex + 1) % GEMINI_KEYS.length;
     console.log(`Rotated to Gemini API key #${currentKeyIndex + 1}`);
 }
 
-async function callGeminiWithRetry(modelName, prompt) {
-    let lastError;
+// ── Primary: Groq. Fallback: Gemini key rotation ──
+async function callAI(prompt) {
+    // Try Groq first
+    try {
+        const response = await groq.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7
+        });
+        console.log("AI response from: Groq");
+        return response.choices[0].message.content;
+    } catch (groqError) {
+        console.error("Groq failed, trying Gemini keys:", groqError.message);
+    }
 
-    for (let attempt = 0; attempt < API_KEYS.length; attempt++) {
+    // Fallback: try each Gemini key
+    if (GEMINI_KEYS.length === 0) {
+        throw new Error("No Gemini keys available as fallback.");
+    }
+
+    let lastError;
+    for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt++) {
         try {
-            const genAI = getClient();
-            const model = genAI.getGenerativeModel({ model: modelName });
+            const genAI = new GoogleGenerativeAI(GEMINI_KEYS[currentKeyIndex]);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
             const result = await model.generateContent(prompt);
+            console.log(`AI response from: Gemini key #${currentKeyIndex + 1}`);
             return result.response.text();
-        } catch (error) {
-            console.error(`Gemini call failed on key #${currentKeyIndex + 1}:`, error.message);
-            lastError = error;
+        } catch (geminiError) {
+            console.error(`Gemini key #${currentKeyIndex + 1} failed:`, geminiError.message);
+            lastError = geminiError;
             rotateKey();
         }
     }
@@ -77,13 +94,13 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
 {
   "weakTopic": "Specific sub-topic or concept (e.g. 'CSS Flexbox axis direction' not just 'CSS')",
   "confidenceScore": 0.75,
-  "recommendation": "Write 3-4 sentences. Start by referencing what they got wrong specifically (e.g. 'You selected B for question 2, which suggests you may be confusing X with Y...'). Explain the correct concept clearly in one sentence. End with one concrete action they can take right now (e.g. 'Try re-reading the section on this topic and practice 2-3 similar problems')."
+  "recommendation": "Write 3-4 sentences. Start by referencing what they got wrong specifically (e.g. 'You selected B for question 2, which suggests you may be confusing X with Y...'). Explain the correct concept clearly in one sentence. End with one concrete action they can take right now."
 }
 
 confidenceScore meaning: 0.9 = very clear pattern found, 0.7 = likely issue, 0.5 = unclear from limited data.`;
 
     try {
-        const text = await callGeminiWithRetry("gemini-2.0-flash-lite", prompt);
+        const text = await callAI(prompt);
         const cleaned = text.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleaned);
 
@@ -93,7 +110,7 @@ confidenceScore meaning: 0.9 = very clear pattern found, 0.7 = likely issue, 0.5
             recommendation: parsed.recommendation || "Review this topic and try the quiz again."
         };
     } catch (error) {
-        console.error("Gemini API Error (all keys failed):", error.message);
+        console.error("All AI providers failed:", error.message);
         return {
             weakTopic: quizTopic,
             confidenceScore: 0.5,
@@ -117,11 +134,11 @@ Write a compelling 2-3 sentence course description for a university course title
 Tone: Clear, professional, and motivating.
 Return ONLY the description text — no labels, no markdown, no surrounding quotation marks.`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash-lite", prompt);
+    const text = await callAI(prompt);
     const description = text.trim();
 
     if (!description) {
-        throw new Error("Gemini returned an empty description.");
+        throw new Error("AI returned an empty description.");
     }
 
     return description;
@@ -153,7 +170,7 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
   "motivationalMessage": "one personalised encouraging sentence referencing their actual progress or a specific strength"
 }`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash-lite", prompt);
+    const text = await callAI(prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -195,12 +212,12 @@ Return ONLY a valid JSON array (no markdown, no backticks, no extra text):
 
 Return exactly ${count} questions. correctOption must be A, B, C, or D only.`;
 
-    const text = await callGeminiWithRetry("gemini-2.0-flash-lite", prompt);
+    const text = await callAI(prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const questions = JSON.parse(cleaned);
 
     if (!Array.isArray(questions)) {
-        throw new Error("Gemini did not return a valid array of questions.");
+        throw new Error("AI did not return a valid array of questions.");
     }
 
     return questions.map((q, i) => {
