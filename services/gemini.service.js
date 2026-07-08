@@ -1,11 +1,10 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Multiple keys for rotation — set these in .env and in Railway
 const API_KEYS = [
     process.env.GEMINI_API_KEY_1,
     process.env.GEMINI_API_KEY_2,
     process.env.GEMINI_API_KEY_3
-].filter(Boolean); // removes any that are missing/undefined
+].filter(Boolean);
 
 if (API_KEYS.length === 0) {
     throw new Error("No Gemini API keys found. Set GEMINI_API_KEY_1 (and _2, _3) in your .env file.");
@@ -23,10 +22,6 @@ function rotateKey() {
     console.log(`Rotated to Gemini API key #${currentKeyIndex + 1}`);
 }
 
-/**
- * Runs a Gemini call with automatic retry across all available keys.
- * Tries each key up to once per call; if all keys fail, throws the last error.
- */
 async function callGeminiWithRetry(modelName, prompt) {
     let lastError;
 
@@ -39,45 +34,53 @@ async function callGeminiWithRetry(modelName, prompt) {
         } catch (error) {
             console.error(`Gemini call failed on key #${currentKeyIndex + 1}:`, error.message);
             lastError = error;
-            rotateKey(); // move to next key and try again
+            rotateKey();
         }
     }
 
-    throw lastError; // all keys failed
+    throw lastError;
 }
 
+/**
+ * Generates a personalized study recommendation based on wrong quiz answers.
+ */
 async function generateStudyRecommendation(wrongQuestions, quizTopic) {
     if (!wrongQuestions || wrongQuestions.length === 0) {
         return {
             weakTopic: "None",
             confidenceScore: 1.0,
-            recommendation: "Great work! You answered all questions correctly. Keep practicing to maintain your strong understanding."
+            recommendation: "Perfect score! You answered every question correctly. Keep up the great work and revisit this topic occasionally to keep your knowledge fresh."
         };
     }
 
     const wrongList = wrongQuestions.map((q, i) => `
-${i + 1}. Question: "${q.questionText}"
-   Options: A) ${q.optionA}  B) ${q.optionB}  C) ${q.optionC}  D) ${q.optionD}
-   Correct answer: ${q.correctOption}
-   Student's answer: ${q.studentAnswer}`).join("\n");
+Question ${i + 1}: "${q.questionText}"
+  A) ${q.optionA}
+  B) ${q.optionB}
+  C) ${q.optionC}
+  D) ${q.optionD}
+  Correct answer: ${q.correctOption}
+  Student selected: ${q.studentAnswer}`).join("\n");
 
-    const prompt = `
-You are an educational AI tutor analyzing a student's quiz mistakes to give specific, useful feedback.
+    const prompt = `You are an expert university tutor giving personalized feedback to a student who just completed a quiz.
 
-Quiz Topic: ${quizTopic}
-
-The student answered these questions INCORRECTLY. For each one, you can see the question, all options, the correct answer, and what the student actually picked:
+Quiz Topic: "${quizTopic}"
+Questions the student got WRONG (${wrongQuestions.length} total):
 ${wrongList}
 
-Look at the PATTERN in their wrong answers — not just that they were wrong, but what kind of mistake it suggests (e.g. confusing two similar concepts, a common misconception, a specific sub-topic within the broader topic, careless reading vs genuine misunderstanding).
+Your job:
+1. Identify the SPECIFIC sub-concept or skill gap revealed by their wrong answers — not just the general topic name
+2. Look at WHAT they picked vs what was correct to diagnose the likely misconception
+3. Write a recommendation that feels personal and directly references their actual mistakes
 
-Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text):
+Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
 {
-  "weakTopic": "the SPECIFIC sub-topic or concept they're struggling with, not just the general quiz topic",
-  "confidenceScore": 0.85,
-  "recommendation": "3-4 sentences. Reference their specific wrong answer(s) directly (e.g. 'You selected X when the answer was Y, which suggests...'), explain the likely misconception, and give one concrete, actionable next step."
+  "weakTopic": "Specific sub-topic or concept (e.g. 'CSS Flexbox axis direction' not just 'CSS')",
+  "confidenceScore": 0.75,
+  "recommendation": "Write 3-4 sentences. Start by referencing what they got wrong specifically (e.g. 'You selected B for question 2, which suggests you may be confusing X with Y...'). Explain the correct concept clearly in one sentence. End with one concrete action they can take right now (e.g. 'Try re-reading the section on this topic and practice 2-3 similar problems')."
 }
-`;
+
+confidenceScore meaning: 0.9 = very clear pattern found, 0.7 = likely issue, 0.5 = unclear from limited data.`;
 
     try {
         const text = await callGeminiWithRetry("gemini-1.5-flash", prompt);
@@ -94,22 +97,27 @@ Respond with ONLY a valid JSON object (no markdown, no backticks, no extra text)
         return {
             weakTopic: quizTopic,
             confidenceScore: 0.5,
-            recommendation: `You missed ${wrongQuestions.length} question(s) on ${quizTopic}. Review the course material and retake the quiz.`
+            recommendation: `You missed ${wrongQuestions.length} question(s) on ${quizTopic}. Review the course material carefully and retake the quiz to improve your score.`
         };
     }
 }
 
 /**
- * Generates a short, professional course description from just a title.
- * Used by the AI Course Description Generator feature (teacher-facing).
+ * Generates a professional course description from just a title.
  */
 async function generateCourseDescription(title) {
-    const prompt = `Write a professional 2-3 sentence course description for a university course titled "${title}".
-Mention what students will learn and what skills they will gain.
-Be clear, engaging, and academic.
+    const prompt = `You are a professional academic curriculum designer writing for a university course catalogue.
+
+Write a compelling 2-3 sentence course description for a university course titled "${title}".
+
+- Sentence 1: What the course is about and its core purpose
+- Sentence 2: Key topics or technologies students will study
+- Sentence 3: What practical skills or outcomes students will gain
+
+Tone: Clear, professional, and motivating.
 Return ONLY the description text — no labels, no markdown, no surrounding quotation marks.`;
 
-    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash", prompt);
     const description = text.trim();
 
     if (!description) {
@@ -120,27 +128,32 @@ Return ONLY the description text — no labels, no markdown, no surrounding quot
 }
 
 /**
- * Analyzes a student's full quiz attempt history and produces a
- * personalized report card: grade, strengths, weak areas, study plan.
- * Used by the AI Performance Report feature (student-facing).
+ * Analyzes a student's full quiz history and produces a personalized report card.
  */
 async function generatePerformanceReport(performanceSummary, totalAvg) {
-    const prompt = `You are an educational AI assistant. Analyze this student's quiz performance history:
+    const prompt = `You are an expert academic tutor and learning coach analyzing a university student's quiz performance.
 
+STUDENT PERFORMANCE DATA:
 ${performanceSummary}
 
 Overall average: ${totalAvg}%
 
+Be specific — use the actual topic names from the data above. Do not give generic advice.
+
 Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
 {
-  "overallGrade": "A or B or C or D or F",
-  "strengths": ["topic1", "topic2"],
-  "weakAreas": ["topic1", "topic2"],
-  "studyPlan": ["Step 1: action", "Step 2: action", "Step 3: action"],
-  "motivationalMessage": "one encouraging sentence"
+  "overallGrade": "A, B, C, D, or F — use: A=90%+, B=75-89%, C=60-74%, D=45-59%, F=below 45%",
+  "strengths": ["exact topic names where student scored 70% or above"],
+  "weakAreas": ["exact topic names where student scored below 60%"],
+  "studyPlan": [
+    "Step 1: specific action targeting their single weakest topic by name",
+    "Step 2: technique or resource for their second weakest area",
+    "Step 3: how to maintain and reinforce their strongest topics"
+  ],
+  "motivationalMessage": "one personalised encouraging sentence referencing their actual progress or a specific strength"
 }`;
 
-    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash", prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -154,31 +167,35 @@ Return ONLY a valid JSON object (no markdown, no backticks, no extra text):
 }
 
 /**
- * Generates a set of multiple-choice quiz questions for a given topic.
- * Used by the AI Quiz Generator feature (teacher-facing).
+ * Generates multiple-choice quiz questions for a given topic.
  */
 async function generateQuizQuestions(topic, count) {
-    const prompt = `Generate exactly ${count} multiple choice questions about "${topic}" for a university-level course.
+    const prompt = `You are an experienced university lecturer creating a multiple choice quiz.
+
+Generate exactly ${count} high-quality multiple choice questions about "${topic}" for university-level students.
+
+Rules:
+- Each question must test genuine understanding, not just memorisation of definitions
+- Cover different aspects: concepts, applications, and problem-solving
+- All 4 options must be plausible — no obviously wrong distractors
+- Only one option must be clearly correct
+- Vary which letter (A/B/C/D) is the correct answer across questions
 
 Return ONLY a valid JSON array (no markdown, no backticks, no extra text):
 [
   {
-    "questionText": "The question here?",
-    "optionA": "First option",
-    "optionB": "Second option",
-    "optionC": "Third option",
-    "optionD": "Fourth option",
+    "questionText": "Clear, specific question about ${topic}?",
+    "optionA": "Plausible option",
+    "optionB": "Plausible option",
+    "optionC": "Plausible option",
+    "optionD": "Plausible option",
     "correctOption": "A"
   }
 ]
 
-Rules:
-- correctOption must be exactly A, B, C, or D
-- Questions must be clear and educational
-- All 4 options must be distinct and plausible
-- Return exactly ${count} questions`;
+Return exactly ${count} questions. correctOption must be A, B, C, or D only.`;
 
-    const text = await callGeminiWithRetry("gemini-2.5-flash", prompt);
+    const text = await callGeminiWithRetry("gemini-1.5-flash", prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const questions = JSON.parse(cleaned);
 
@@ -186,7 +203,6 @@ Rules:
         throw new Error("Gemini did not return a valid array of questions.");
     }
 
-    // Validate + normalize each question so bad AI output never reaches the DB
     return questions.map((q, i) => {
         const correct = String(q.correctOption || "").trim().toUpperCase();
         if (!q.questionText || !q.optionA || !q.optionB || !q.optionC || !q.optionD) {
